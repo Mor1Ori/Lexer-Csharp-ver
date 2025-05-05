@@ -20,21 +20,16 @@ namespace Lexer
 
         private void SelectFileButton_Click(object sender, EventArgs e)
         {
-            // 创建并配置OpenFileDialog
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
                 openFileDialog.Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*";
                 openFileDialog.Title = "选择一个文本文件";
 
-                // 显示对话框并检查用户是否选择了文件
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     try
                     {
-                        // 读取文件内容
                         string fileContent = File.ReadAllText(openFileDialog.FileName);
-
-                        // 将内容显示在TextBox中
                         textBox1.Text = fileContent;
                     }
                     catch (Exception ex)
@@ -61,8 +56,6 @@ namespace Lexer
                 var lexer = new Lexer(source);
                 var result = lexer.Analyze();
 
-
-                // 显示结果到文本框2
                 textBox2.Text = result.Output;
             }
             catch (Exception ex)
@@ -78,11 +71,11 @@ namespace Lexer
         private readonly string source;
         private int pos;
         private readonly List<string> identifiers = new List<string>(); // 标识符表
-        private readonly List<int> constants = new List<int>();        // 常数表
-        private readonly List<string> errors = new List<string>();     // 错误信息
-        private readonly List<string> tokenLines = new List<string>(); // 单词串
+        private readonly List<double> constants = new List<double>();   // 常数表
+        private readonly List<string> errors = new List<string>();      // 错误信息
+        private readonly List<string> tokenLines = new List<string>();  // 单词串
         private readonly HashSet<string> keywords = new HashSet<string> { "if", "else" };
-        private readonly HashSet<string> operators = new HashSet<string> { "+", "-", "*", "/", ":=", "=", "<>", "<", ">", "<=", ">=" };
+        private readonly HashSet<string> operators = new HashSet<string> { "+", "-", "*", "/", "=", "==", "<>", "<", ">", "<=", ">=" };
         private readonly HashSet<char> delimiters = new HashSet<char> { ';', '(', ')', '#' };
 
         public Lexer(string source)
@@ -103,30 +96,100 @@ namespace Lexer
                     continue;
                 }
 
-                if (char.IsLetter(c))
+                if (char.IsLetter(c) || char.IsDigit(c))
                 {
-                    ScanIdentifierOrKeyword();
+                    // 尝试解析标识符或数字
+                    int startPos = pos;
+                    StringBuilder sb = new StringBuilder();
+                    bool hasLetter = char.IsLetter(c);
+
+                    // 读取字母、数字或下划线
+                    while (pos < source.Length && (char.IsLetterOrDigit(source[pos]) || source[pos] == '_'))
+                    {
+                        sb.Append(source[pos]);
+                        if (char.IsLetter(source[pos]))
+                            hasLetter = true;
+                        pos++;
+                    }
+
+                    string token = sb.ToString();
+
+                    // 如果包含字母，尝试作为标识符或关键字
+                    if (hasLetter)
+                    {
+                        if (keywords.Contains(token))
+                        {
+                            tokenLines.Add($"({token}, -)");
+                        }
+                        else
+                        {
+                            if (!char.IsLetter(token[0]))
+                            {
+                                errors.Add($"错误: 标识符 '{token}' 非法，必须以字母开头");
+                            }
+                            else
+                            {
+                                int index = identifiers.IndexOf(token);
+                                if (index == -1)
+                                {
+                                    identifiers.Add(token);
+                                    index = identifiers.Count - 1;
+                                }
+                                tokenLines.Add($"(id, {index + 1})");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // 纯数字，回退并解析为数字
+                        pos = startPos;
+                        ScanNumber();
+                    }
                 }
-                else if (char.IsDigit(c))
+                else if (c == '.')
                 {
-                    ScanNumber();
+                    // 检查是否为浮点数
+                    int startPos = pos;
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(c);
+                    pos++;
+
+                    // 读取小数部分
+                    bool hasDigits = false;
+                    while (pos < source.Length && char.IsDigit(source[pos]))
+                    {
+                        sb.Append(source[pos]);
+                        hasDigits = true;
+                        pos++;
+                    }
+
+                    string token = sb.ToString();
+
+                    // 检查前一个字符是否为数字（整数部分）
+                    bool hasIntegerPart = startPos > 0 && char.IsDigit(source[startPos - 1]);
+                    if (!hasIntegerPart && !hasDigits)
+                    {
+                        errors.Add($"错误: token '{token}' 未定义");
+                    }
+                    else
+                    {
+                        // 回退并调用ScanNumber
+                        pos = startPos;
+                        ScanNumber();
+                    }
                 }
                 else if (delimiters.Contains(c))
                 {
-                    tokenLines.Add($"({GetTokenType(c.ToString())}, -)");
+                    tokenLines.Add($"({c}, -)");
                     pos++;
                 }
                 else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>')
                 {
                     ScanOperator();
                 }
-                else if (c == ':')
-                {
-                    ScanAssign();
-                }
                 else
                 {
-                    errors.Add($"错误: 位置 {pos + 1} 处的字符 '{c}' 未定义");
+                    errors.Add($"错误: token '{c}' 未定义");
                     pos++;
                 }
             }
@@ -167,40 +230,80 @@ namespace Lexer
             return (output.ToString(), tokenLines);
         }
 
-        private void ScanIdentifierOrKeyword()
-        {
-            StringBuilder sb = new StringBuilder();
-            while (pos < source.Length && (char.IsLetterOrDigit(source[pos]) || source[pos] == '_'))
-            {
-                sb.Append(source[pos]);
-                pos++;
-            }
-            string token = sb.ToString();
-            if (keywords.Contains(token))
-            {
-                tokenLines.Add($"({token}, -)");
-            }
-            else
-            {
-                int index = identifiers.IndexOf(token);
-                if (index == -1)
-                {
-                    identifiers.Add(token);
-                    index = identifiers.Count - 1;
-                }
-                tokenLines.Add($"(id, {index + 1})");
-            }
-        }
-
         private void ScanNumber()
         {
             StringBuilder sb = new StringBuilder();
+            bool hasDecimalPoint = false;
+            int decimalPointCount = 0;
+            bool hasDigits = false;
+            bool hasIntegerPart = false;
+
+            // 读取整数部分
             while (pos < source.Length && char.IsDigit(source[pos]))
             {
                 sb.Append(source[pos]);
+                hasDigits = true;
+                hasIntegerPart = true;
                 pos++;
             }
-            if (int.TryParse(sb.ToString(), out int value))
+
+            // 读取小数点及小数部分
+            if (pos < source.Length && source[pos] == '.')
+            {
+                hasDecimalPoint = true;
+                decimalPointCount++;
+                sb.Append(source[pos]);
+                pos++;
+                while (pos < source.Length && char.IsDigit(source[pos]))
+                {
+                    sb.Append(source[pos]);
+                    hasDigits = true;
+                    pos++;
+                }
+            }
+
+            // 检查后续小数点（针对3.0.1）
+            if (pos < source.Length && source[pos] == '.')
+            {
+                decimalPointCount++;
+                sb.Append(source[pos]);
+                pos++;
+                while (pos < source.Length && char.IsDigit(source[pos]))
+                {
+                    sb.Append(source[pos]);
+                    hasDigits = true;
+                    pos++;
+                }
+            }
+
+            string token = sb.ToString();
+
+            // 检查数字合法性
+            if (decimalPointCount > 1)
+            {
+                errors.Add($"错误: 数字 '{token}' 非法，包含多个小数点");
+                return;
+            }
+
+            if (!hasDigits)
+            {
+                errors.Add($"错误: 数字 '{token}' 非法，缺少数字");
+                return;
+            }
+
+            if (!hasDecimalPoint && token.Length > 1 && token[0] == '0')
+            {
+                errors.Add($"错误: 数字 '{token}' 非法，整数不能以0开头");
+                return;
+            }
+
+            if (hasDecimalPoint && !hasIntegerPart)
+            {
+                errors.Add($"错误: 数字 '{token}' 非法，缺少整数部分");
+                return;
+            }
+
+            if (double.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value))
             {
                 int index = constants.IndexOf(value);
                 if (index == -1)
@@ -212,7 +315,7 @@ namespace Lexer
             }
             else
             {
-                errors.Add($"错误: 位置 {pos - sb.Length + 1} 处的数字 '{sb}' 无效");
+                errors.Add($"错误: 数字 '{token}' 无效");
             }
         }
 
@@ -220,47 +323,36 @@ namespace Lexer
         {
             string op = source[pos].ToString();
             pos++;
-            if (pos < source.Length && (op == "<" || op == ">") && source[pos] == '=')
+
+            // 检查多字符运算符
+            if (pos < source.Length)
             {
-                op += "=";
-                pos++;
+                if (op == "=" && source[pos] == '=')
+                {
+                    op = "==";
+                    pos++;
+                }
+                else if (op == "<" && source[pos] == '>')
+                {
+                    op = "<>";
+                    pos++;
+                }
+                else if ((op == "<" || op == ">") && source[pos] == '=')
+                {
+                    op += "=";
+                    pos++;
+                }
             }
-            else if (pos < source.Length && op == "<" && source[pos] == '>')
-            {
-                op += ">";
-                pos++;
-            }
+
             if (operators.Contains(op))
             {
                 tokenLines.Add($"({op}, -)");
             }
             else
             {
-                errors.Add($"错误: 位置 {pos - op.Length + 1} 处的运算符 '{op}' 无效");
+                errors.Add($"错误: token '{op}' 未定义");
             }
-        }
-
-        private void ScanAssign()
-        {
-            pos++;
-            if (pos < source.Length && source[pos] == '=')
-            {
-                pos++;
-                tokenLines.Add($"(:=, -)");
-            }
-            else
-            {
-                errors.Add($"错误: 位置 {pos} 处缺少 '='，无法形成赋值运算符 ':='");
-            }
-        }
-
-        private string GetTokenType(string token)
-        {
-            if (keywords.Contains(token)) return token;
-            if (operators.Contains(token)) return token;
-            if (delimiters.Contains(token[0])) return token;
-            return "unknown";
         }
     }
-
 }
+
