@@ -72,11 +72,40 @@ namespace Lexer
         private int pos;
         private readonly List<string> identifiers = new List<string>(); // 标识符表
         private readonly List<double> constants = new List<double>();   // 常数表
-        private readonly List<string> errors = new List<string>();      // 错误信息
         private readonly List<string> tokenLines = new List<string>();  // 单词串
+        private readonly List<string> errors = new List<string>();      // 错误信息
         private readonly HashSet<string> keywords = new HashSet<string> { "if", "else" };
         private readonly HashSet<string> operators = new HashSet<string> { "+", "-", "*", "/", "=", "==", "<>", "<", ">", "<=", ">=" };
         private readonly HashSet<char> delimiters = new HashSet<char> { ';', '(', ')', '#' };
+
+        // 单词编码表
+        private static readonly Dictionary<string, string> TokenCodes = new Dictionary<string, string>
+        {
+            /* 标识符 */
+            { "identifier", "token_id" },
+            /* 数字 */
+            { "number", "token_num" },
+            /* 关键字 */
+            { "if", "token_if" },
+            { "else", "token_else" },
+            /* 运算符 */
+            { "+", "token_plus" },
+            { "-", "token_minus" },
+            { "*", "token_multiply" },
+            { "/", "token_divide" },
+            { "=", "token_eq" },
+            { "==", "token_eqeq" },
+            { "<>", "token_neq" },
+            { "<", "token_lt" },
+            { ">", "token_gt" },
+            { "<=", "token_le" },
+            { ">=", "token_ge" },
+            /* 分隔符 */
+            { ";", "token_semicolon" },
+            { "(", "token_lparen" },
+            { ")", "token_rparen" },
+            { "#", "token_hash" }
+        };
 
         public Lexer(string source)
         {
@@ -119,7 +148,7 @@ namespace Lexer
                     {
                         if (keywords.Contains(token))
                         {
-                            tokenLines.Add($"({token}, -)");
+                            tokenLines.Add($"({TokenCodes[token]}, -, {token})");
                         }
                         else
                         {
@@ -135,7 +164,7 @@ namespace Lexer
                                     identifiers.Add(token);
                                     index = identifiers.Count - 1;
                                 }
-                                tokenLines.Add($"(id, {index + 1})");
+                                tokenLines.Add($"({TokenCodes["identifier"]}, {index + 1}, {token})");
                             }
                         }
                     }
@@ -180,7 +209,8 @@ namespace Lexer
                 }
                 else if (delimiters.Contains(c))
                 {
-                    tokenLines.Add($"({c}, -)");
+                    string token = c.ToString();
+                    tokenLines.Add($"({TokenCodes[token]}, -, {token})");
                     pos++;
                 }
                 else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>')
@@ -195,7 +225,7 @@ namespace Lexer
             }
 
             // 检查是否以#结束
-            if (tokenLines.Count == 0 || tokenLines[tokenLines.Count - 1] != "(#, -)")
+            if (tokenLines.Count == 0 || tokenLines[tokenLines.Count - 1] != $"({TokenCodes["#"]}, -, #)")
             {
                 errors.Add("错误: 源程序未以'#'结束");
             }
@@ -203,6 +233,7 @@ namespace Lexer
             // 构建输出
             StringBuilder output = new StringBuilder();
             output.AppendLine("=== 词法分析结果 ===");
+
             output.AppendLine("\n标识符表:");
             for (int i = 0; i < identifiers.Count; i++)
             {
@@ -262,7 +293,7 @@ namespace Lexer
                 }
             }
 
-            // 检查后续小数点（针对3.0.1）
+            // 检查后续小数点
             if (pos < source.Length && source[pos] == '.')
             {
                 decimalPointCount++;
@@ -311,7 +342,7 @@ namespace Lexer
                     constants.Add(value);
                     index = constants.Count - 1;
                 }
-                tokenLines.Add($"(num, {index + 1})");
+                tokenLines.Add($"({TokenCodes["number"]}, {index + 1}, {token})");
             }
             else
             {
@@ -346,7 +377,7 @@ namespace Lexer
 
             if (operators.Contains(op))
             {
-                tokenLines.Add($"({op}, -)");
+                tokenLines.Add($"({TokenCodes[op]}, -, {op})");
             }
             else
             {
