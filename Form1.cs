@@ -72,11 +72,11 @@ namespace Lexer
         private int pos;
         private readonly List<string> identifiers = new List<string>(); // 标识符表
         private readonly List<double> constants = new List<double>();   // 常数表
-        private readonly List<string> tokenLines = new List<string>();  // 单词串
+        private readonly List<string> tokenLines = new List<string>();  // tokens
         private readonly List<string> errors = new List<string>();      // 错误信息
-        private readonly HashSet<string> keywords = new HashSet<string> { "if", "else" };
-        private readonly HashSet<string> operators = new HashSet<string> { "+", "-", "*", "/", "=", "==", "<>", "<", ">", "<=", ">=" };
-        private readonly HashSet<char> delimiters = new HashSet<char> { ';', '(', ')', '#' };
+        private readonly HashSet<string> keywords = new HashSet<string> { "if", "else", "int", "double", "return", "for", "float" };
+        private readonly HashSet<string> operators = new HashSet<string> { "+", "-", "*", "/", "=", "==", "<", ">", "<=", ">=", "++" };
+        private readonly HashSet<char> delimiters = new HashSet<char> { ';', '(', ')', '#', '{', '}' };
 
         // 单词编码表
         private static readonly Dictionary<string, string> TokenCodes = new Dictionary<string, string>
@@ -88,6 +88,11 @@ namespace Lexer
             /* 关键字 */
             { "if", "token_if" },
             { "else", "token_else" },
+            { "int", "token_int" },
+            { "double", "token_double" },
+            { "return", "token_return" },
+            { "for", "token_for" },
+            { "float", "token_float" },
             /* 运算符 */
             { "+", "token_plus" },
             { "-", "token_minus" },
@@ -95,16 +100,18 @@ namespace Lexer
             { "/", "token_divide" },
             { "=", "token_eq" },
             { "==", "token_eqeq" },
-            { "<>", "token_neq" },
             { "<", "token_lt" },
             { ">", "token_gt" },
             { "<=", "token_le" },
             { ">=", "token_ge" },
+            { "++", "token_inc" },
             /* 分隔符 */
             { ";", "token_semicolon" },
             { "(", "token_lparen" },
             { ")", "token_rparen" },
-            { "#", "token_hash" }
+            { "#", "token_hash" },
+            { "{", "token_lbrace" },
+            { "}", "token_rbrace" },
         };
 
         public Lexer(string source)
@@ -125,102 +132,58 @@ namespace Lexer
                     continue;
                 }
 
-                if (char.IsLetter(c) || char.IsDigit(c))
-                {
-                    // 尝试解析标识符或数字
-                    int startPos = pos;
-                    StringBuilder sb = new StringBuilder();
-                    bool hasLetter = char.IsLetter(c);
-
-                    // 读取字母、数字或下划线
-                    while (pos < source.Length && (char.IsLetterOrDigit(source[pos]) || source[pos] == '_'))
-                    {
-                        sb.Append(source[pos]);
-                        if (char.IsLetter(source[pos]))
-                            hasLetter = true;
-                        pos++;
-                    }
-
-                    string token = sb.ToString();
-
-                    // 如果包含字母，尝试作为标识符或关键字
-                    if (hasLetter)
-                    {
-                        if (keywords.Contains(token))
-                        {
-                            tokenLines.Add($"({TokenCodes[token]}, -, {token})");
-                        }
-                        else
-                        {
-                            if (!char.IsLetter(token[0]))
-                            {
-                                errors.Add($"错误: 标识符 '{token}' 非法，必须以字母开头");
-                            }
-                            else
-                            {
-                                int index = identifiers.IndexOf(token);
-                                if (index == -1)
-                                {
-                                    identifiers.Add(token);
-                                    index = identifiers.Count - 1;
-                                }
-                                tokenLines.Add($"({TokenCodes["identifier"]}, {index + 1}, {token})");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // 纯数字，回退并解析为数字
-                        pos = startPos;
-                        ScanNumber();
-                    }
-                }
-                else if (c == '.')
-                {
-                    // 检查是否为浮点数
-                    int startPos = pos;
-                    StringBuilder sb = new StringBuilder();
-                    sb.Append(c);
-                    pos++;
-
-                    // 读取小数部分
-                    bool hasDigits = false;
-                    while (pos < source.Length && char.IsDigit(source[pos]))
-                    {
-                        sb.Append(source[pos]);
-                        hasDigits = true;
-                        pos++;
-                    }
-
-                    string token = sb.ToString();
-
-                    // 检查前一个字符是否为数字（整数部分）
-                    bool hasIntegerPart = startPos > 0 && char.IsDigit(source[startPos - 1]);
-                    if (!hasIntegerPart && !hasDigits)
-                    {
-                        errors.Add($"错误: token '{token}' 未定义");
-                    }
-                    else
-                    {
-                        // 回退并调用ScanNumber
-                        pos = startPos;
-                        ScanNumber();
-                    }
-                }
-                else if (delimiters.Contains(c))
+                if (delimiters.Contains(c))
                 {
                     string token = c.ToString();
                     tokenLines.Add($"({TokenCodes[token]}, -, {token})");
                     pos++;
                 }
-                else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>')
+                else if (operators.Contains(c.ToString()))
                 {
                     ScanOperator();
                 }
+                else if (char.IsDigit(c) || c == '.')
+                {
+                    ScanNumber();
+                }
                 else
                 {
-                    errors.Add($"错误: token '{c}' 未定义");
-                    pos++;
+                    // 尝试解析标识符或关键字
+                    StringBuilder sb = new StringBuilder();
+                    while (pos < source.Length && !char.IsWhiteSpace(source[pos]) && !delimiters.Contains(source[pos]) &&
+                           !(operators.Contains(source[pos].ToString())))
+                    {
+                        sb.Append(source[pos]);
+                        pos++;
+                    }
+
+                    string token = sb.ToString();
+
+                    if (keywords.Contains(token))
+                    {
+                        tokenLines.Add($"({TokenCodes[token]}, -, {token})");
+                    }
+                    else if (token.All(ch => char.IsLetterOrDigit(ch) || ch == '_'))
+                    {
+                        if (!char.IsLetter(token[0]))
+                        {
+                            errors.Add($"错误: 标识符 '{token}' 非法，必须以字母开头");
+                        }
+                        else
+                        {
+                            int index = identifiers.IndexOf(token);
+                            if (index == -1)
+                            {
+                                identifiers.Add(token);
+                                index = identifiers.Count - 1;
+                            }
+                            tokenLines.Add($"({TokenCodes["identifier"]}, {index + 1}, {token})");
+                        }
+                    }
+                    else
+                    {
+                        errors.Add($"错误: 标识符 '{token}' 非法，包含非法字符或格式错误");
+                    }
                 }
             }
 
@@ -244,7 +207,7 @@ namespace Lexer
             {
                 output.AppendLine($"{i + 1}: {constants[i]}");
             }
-            output.AppendLine("\n单词串:");
+            output.AppendLine("\ntokens:");
             foreach (var token in tokenLines)
             {
                 output.AppendLine(token);
@@ -307,6 +270,15 @@ namespace Lexer
                 }
             }
 
+            // 读取后续字符（检查非法后缀）
+            while (pos < source.Length && !char.IsWhiteSpace(source[pos]) && !delimiters.Contains(source[pos]) &&
+                   !(source[pos] == '+' || source[pos] == '-' || source[pos] == '*' || source[pos] == '/' ||
+                     source[pos] == '=' || source[pos] == '<' || source[pos] == '>'))
+            {
+                sb.Append(source[pos]);
+                pos++;
+            }
+
             string token = sb.ToString();
 
             // 检查数字合法性
@@ -322,15 +294,22 @@ namespace Lexer
                 return;
             }
 
-            if (!hasDecimalPoint && token.Length > 1 && token[0] == '0')
+            if (token.Length > 1 && token[0] == '0' && !hasDecimalPoint)
             {
-                errors.Add($"错误: 数字 '{token}' 非法，整数不能以0开头");
+                errors.Add($"错误: 数字 '{token}' 非法，数字不能以0开头");
                 return;
             }
 
             if (hasDecimalPoint && !hasIntegerPart)
             {
                 errors.Add($"错误: 数字 '{token}' 非法，缺少整数部分");
+                return;
+            }
+
+            // 检查是否包含非法字符
+            if (!token.All(ch => char.IsDigit(ch) || ch == '.'))
+            {
+                errors.Add($"错误: 数字 '{token}' 非法，包含非法字符");
                 return;
             }
 
@@ -363,14 +342,14 @@ namespace Lexer
                     op = "==";
                     pos++;
                 }
-                else if (op == "<" && source[pos] == '>')
-                {
-                    op = "<>";
-                    pos++;
-                }
                 else if ((op == "<" || op == ">") && source[pos] == '=')
                 {
                     op += "=";
+                    pos++;
+                }
+                else if ((op == "+") && source[pos] == '+')
+                {
+                    op += "+";
                     pos++;
                 }
             }
@@ -386,4 +365,3 @@ namespace Lexer
         }
     }
 }
-
